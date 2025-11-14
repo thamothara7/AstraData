@@ -11,6 +11,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'marketplace' | 'upload' | 'purchased'>('marketplace');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     loadDatasets();
@@ -35,6 +36,13 @@ function App() {
     setActiveTab('marketplace');
   };
 
+  const handlePurchaseSuccess = () => {
+    // Refresh marketplace datasets
+    loadDatasets();
+    // Trigger refresh of purchased datasets if on that tab
+    setRefreshKey(prev => prev + 1);
+  };
+
   return (
     <ThemeProvider>
       <WalletKitProvider
@@ -46,9 +54,14 @@ function App() {
           <Header activeTab={activeTab} setActiveTab={setActiveTab} />
           <main className="container mx-auto px-4 py-8">
             {activeTab === 'marketplace' ? (
-              <Marketplace datasets={datasets} loading={loading} onRefresh={loadDatasets} />
+              <Marketplace 
+                datasets={datasets} 
+                loading={loading} 
+                onRefresh={loadDatasets}
+                onPurchaseSuccess={handlePurchaseSuccess}
+              />
             ) : activeTab === 'purchased' ? (
-              <PurchasedDatasets />
+              <PurchasedDatasets key={refreshKey} />
             ) : (
               <UploadDataset onUploaded={handleDatasetUploaded} />
             )}

@@ -68,14 +68,34 @@ export default function PurchaseModal({ dataset, onClose, onSuccess }: PurchaseM
       // @ts-ignore - Type mismatch between wallet-kit WalletAdapter and our WalletSigner type due to different TransactionBlock versions, but runtime works
       const hash = await purchaseDataset(dataset, signer, currentAccount, buyerAddress);
 
-
       setTxHash(hash);
       setStatus('success');
+
+      // Wait for NFT to be available on-chain (polling)
+      let nftFound = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+          const hasPurchased = await import('../services/marketplace').then(m => 
+            m.hasPurchasedDataset(buyerAddress, dataset.id)
+          );
+          if (hasPurchased) {
+            nftFound = true;
+            break;
+          }
+        } catch (error) {
+          console.warn('Error checking NFT availability:', error);
+        }
+      }
+
+      if (!nftFound) {
+        console.warn('NFT not found after purchase, but transaction succeeded. It may appear shortly.');
+      }
 
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 2000);
+      }, 1000);
     } catch (error: any) {
       console.error('Purchase error:', error);
       setErrorMessage(error.message || 'Failed to purchase dataset');

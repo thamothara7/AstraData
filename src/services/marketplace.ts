@@ -450,32 +450,46 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
   ensureChainConfig();
 
   try {
-    // Query owned objects of type DatasetNFT
+    // Query owned objects of type DatasetNFT with pagination
     const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
-    const ownedObjects = await suiClient.getOwnedObjects({
-      owner: buyerAddress,
-      filter: {
-        StructType: nftType,
-      },
-      options: {
-        showContent: true,
-        showType: true,
-      },
-    });
-
-    if (!ownedObjects.data || ownedObjects.data.length === 0) {
-      return [];
-    }
-
-    // Extract dataset IDs from NFTs
     const purchasedDatasetIds = new Set<string>();
-    for (const obj of ownedObjects.data) {
-      const content = obj.data?.content as any;
-      if (content?.dataType === 'moveObject' && content.fields) {
-        const datasetId = content.fields.dataset_id?.toString();
-        if (datasetId) {
-          purchasedDatasetIds.add(datasetId);
+    let cursor: string | null | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const ownedObjects = await suiClient.getOwnedObjects({
+        owner: buyerAddress,
+        filter: {
+          StructType: nftType,
+        },
+        options: {
+          showContent: true,
+          showType: true,
+        },
+        cursor: cursor ?? undefined,
+        limit: 50,
+      });
+
+      if (!ownedObjects.data || ownedObjects.data.length === 0) {
+        break;
+      }
+
+      // Extract dataset IDs from NFTs
+      for (const obj of ownedObjects.data) {
+        const content = obj.data?.content as any;
+        if (content?.dataType === 'moveObject' && content.fields) {
+          const datasetId = content.fields.dataset_id?.toString();
+          if (datasetId) {
+            purchasedDatasetIds.add(datasetId);
+          }
         }
+      }
+
+      hasMore = ownedObjects.hasNextPage ?? false;
+      cursor = ownedObjects.nextCursor ?? null;
+      
+      if (!hasMore || !cursor) {
+        break;
       }
     }
 
@@ -509,27 +523,43 @@ export const hasPurchasedDataset = async (
 
   try {
     const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
-    const ownedObjects = await suiClient.getOwnedObjects({
-      owner: buyerAddress,
-      filter: {
-        StructType: nftType,
-      },
-      options: {
-        showContent: true,
-      },
-    });
+    
+    // Query with pagination to get all NFTs
+    let cursor: string | null | undefined;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const ownedObjects = await suiClient.getOwnedObjects({
+        owner: buyerAddress,
+        filter: {
+          StructType: nftType,
+        },
+        options: {
+          showContent: true,
+        },
+        cursor: cursor ?? undefined,
+        limit: 50,
+      });
 
-    if (!ownedObjects.data) {
-      return false;
-    }
+      if (!ownedObjects.data) {
+        return false;
+      }
 
-    for (const obj of ownedObjects.data) {
-      const content = obj.data?.content as any;
-      if (content?.dataType === 'moveObject' && content.fields) {
-        const nftDatasetId = content.fields.dataset_id?.toString();
-        if (nftDatasetId === datasetId) {
-          return true;
+      for (const obj of ownedObjects.data) {
+        const content = obj.data?.content as any;
+        if (content?.dataType === 'moveObject' && content.fields) {
+          const nftDatasetId = content.fields.dataset_id?.toString();
+          if (nftDatasetId === datasetId) {
+            return true;
+          }
         }
+      }
+
+      hasMore = ownedObjects.hasNextPage ?? false;
+      cursor = ownedObjects.nextCursor ?? null;
+      
+      if (!hasMore || !cursor) {
+        break;
       }
     }
 
