@@ -7,21 +7,23 @@ export interface WalrusUploadResult {
 }
 
 /**
- * REAL Upload to Walrus Storage
+ * Upload to Walrus Storage (v0.8.4 API)
  */
 export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> => {
   try {
     const client = createWalrusClient();
 
-    // Convert file → Uint8Array
+    // Convert File to Uint8Array
     const arrayBuffer = await file.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    // Upload using updated API (NO epochs)
-    const { blobId } = await client.walrus.writeBlobToUploadRelay({
+    // v0.8.4 --- writeBlobToUploadRelay requires ONLY blob + deletable
+    const res = await client.walrus.writeBlobToUploadRelay({
       blob: bytes,
       deletable: false,
     });
+
+    const { blobId } = res;
 
     return {
       reference: `walrus:${blobId}`,
@@ -35,7 +37,7 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
 };
 
 /**
- * REAL Download from Walrus Storage
+ * Download from Walrus Storage (v0.8.4 API)
  */
 export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
   try {
@@ -44,15 +46,15 @@ export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
     const blobId = reference.replace(/^walrus:\/?/, "").trim();
     const client = createWalrusClient();
 
+    // v0.8.4 getFiles returns >>> WalrusFile { blob, contentType }
     const [walrusFile] = await client.walrus.getFiles({ ids: [blobId] });
 
     if (!walrusFile) throw new Error("Walrus file not found");
 
-    // Updated WalrusFile API
-    const uint8 = walrusFile.data;      // Uint8Array
-    const mime = walrusFile.mime || "application/octet-stream";
+    const uint8 = walrusFile.blob; // <--- correct field in v0.8.4
+    const mime = walrusFile.contentType || "application/octet-stream";
 
-    return new Blob([uint8.buffer], { type: mime });
+    return new Blob([uint8], { type: mime });
   } catch (err) {
     console.error("Walrus download error:", err);
     throw new Error("Failed to download from Walrus storage");
