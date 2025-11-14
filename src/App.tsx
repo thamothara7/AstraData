@@ -36,11 +36,19 @@ function App() {
     setActiveTab('marketplace');
   };
 
-  const handlePurchaseSuccess = () => {
+  const handlePurchaseSuccess = async () => {
     // Refresh marketplace datasets
-    loadDatasets();
+    await loadDatasets();
+    // Wait a bit for NFT to be available
+    await new Promise(resolve => setTimeout(resolve, 2000));
     // Trigger refresh of purchased datasets if on that tab
     setRefreshKey(prev => prev + 1);
+    // If on purchased tab, switch to it to see the new purchase
+    if (activeTab !== 'purchased') {
+      setTimeout(() => {
+        setActiveTab('purchased');
+      }, 500);
+    }
   };
 
   return (

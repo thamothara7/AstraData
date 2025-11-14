@@ -552,10 +552,14 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
         });
         
         if (content?.dataType === 'moveObject' && content.fields) {
-          const datasetId = content.fields.dataset_id?.toString();
-          console.log('Found dataset ID in NFT:', datasetId);
-          if (datasetId) {
-            purchasedDatasetIds.add(datasetId);
+          // Try different possible field names
+          const datasetId = 
+            content.fields.dataset_id?.toString() ||
+            content.fields.datasetId?.toString() ||
+            content.fields['dataset_id']?.toString();
+          console.log('Found dataset ID in NFT:', datasetId, 'Fields:', Object.keys(content.fields));
+          if (datasetId !== undefined && datasetId !== null) {
+            purchasedDatasetIds.add(datasetId.toString());
           }
         }
       }
@@ -580,8 +584,16 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
     console.log('All marketplace datasets:', allDatasets.length);
     
     const purchasedDatasets = allDatasets.filter((dataset) => {
-      const isPurchased = purchasedDatasetIds.has(dataset.id);
-      console.log(`Dataset ${dataset.id} (${dataset.name}): ${isPurchased ? 'PURCHASED' : 'not purchased'}`);
+      // Try both string and number comparison
+      const isPurchased = 
+        purchasedDatasetIds.has(dataset.id) || 
+        purchasedDatasetIds.has(dataset.id.toString()) ||
+        purchasedDatasetIds.has(String(dataset.id));
+      console.log(`Dataset ${dataset.id} (${dataset.name}): ${isPurchased ? 'PURCHASED' : 'not purchased'}`, {
+        datasetId: dataset.id,
+        datasetIdType: typeof dataset.id,
+        purchasedIds: Array.from(purchasedDatasetIds),
+      });
       return isPurchased;
     });
 

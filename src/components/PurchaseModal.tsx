@@ -71,10 +71,14 @@ export default function PurchaseModal({ dataset, onClose, onSuccess }: PurchaseM
       setTxHash(hash);
       setStatus('success');
 
+      // Wait a bit for the transaction to finalize and NFT to be available
+      console.log('Purchase successful, waiting for NFT to be available...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 2000);
+      }, 1000);
     } catch (error: any) {
       console.error('Purchase error:', error);
       setErrorMessage(error.message || 'Failed to purchase dataset');

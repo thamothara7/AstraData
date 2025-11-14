@@ -33,6 +33,17 @@ export default function PurchasedDatasets() {
     }
   }, [isConnected, address]);
 
+  // Also reload when component becomes visible (when switching to this tab)
+  useEffect(() => {
+    if (isConnected && address) {
+      // Small delay to ensure we're on the tab
+      const timer = setTimeout(() => {
+        loadPurchasedDatasets();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   const loadPurchasedDatasets = async () => {
     if (!address) {
       console.warn('No address available for loading purchased datasets');
@@ -128,6 +139,11 @@ export default function PurchasedDatasets() {
           <p className="text-gray-600 dark:text-gray-400">
             Datasets you've purchased and have access to download
           </p>
+          {address && (
+            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 font-mono">
+              Wallet: {address.slice(0, 8)}...{address.slice(-6)}
+            </p>
+          )}
         </div>
         <button
           onClick={loadPurchasedDatasets}
