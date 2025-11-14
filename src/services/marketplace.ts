@@ -441,8 +441,25 @@ export const purchaseDataset = async (
     transactionBlock: tx,
     account: accountForSigning,
     chain: walletChainId,
-    options: { showEffects: true },
+    options: { 
+      showEffects: true,
+      showEvents: true,
+      showObjectChanges: true,
+    },
   });
+
+  console.log('Purchase transaction response:', {
+    digest: response.digest,
+    effects: response.effects,
+    events: response.events,
+    objectChanges: response.objectChanges,
+  });
+
+  // Check if NFT was created
+  const createdObjects = response.objectChanges?.filter(
+    (change: any) => change.type === 'created' && change.objectType?.includes('DatasetNFT')
+  );
+  console.log('Created NFT objects:', createdObjects);
 
   return response.digest;
 };
@@ -515,6 +532,27 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
     const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
     console.log('NFT type:', nftType);
     
+    // First, try querying without filter to see all owned objects (for debugging)
+    console.log('Querying all owned objects first to debug...');
+    try {
+      const allOwned = await suiClient.getOwnedObjects({
+        owner: buyerAddress,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+        limit: 20,
+      });
+      console.log('All owned objects (first 20):', allOwned.data?.map(obj => ({
+        objectId: obj.data?.objectId,
+        type: obj.data?.type,
+        hasContent: !!obj.data?.content,
+      })));
+      console.log('Total owned objects:', allOwned.data?.length || 0);
+    } catch (error) {
+      console.warn('Error querying all owned objects:', error);
+    }
+    
     const purchasedDatasetIds = new Set<string>();
     let cursor: string | null | undefined;
     let hasMore = true;
@@ -536,19 +574,29 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
       console.log('Owned objects response:', {
         count: ownedObjects.data?.length || 0,
         hasNextPage: ownedObjects.hasNextPage,
+        fullResponse: JSON.stringify(ownedObjects, null, 2),
       });
 
       if (!ownedObjects.data || ownedObjects.data.length === 0) {
+        console.log('No owned objects found in this batch');
         break;
       }
 
       // Extract dataset IDs from NFTs
       for (const obj of ownedObjects.data) {
+        console.log('Processing object:', {
+          objectId: obj.data?.objectId,
+          type: obj.data?.type,
+          owner: obj.data?.owner,
+          content: obj.data?.content,
+        });
+        
         const content = obj.data?.content as any;
-        console.log('NFT object:', {
+        console.log('NFT object content:', {
           objectId: obj.data?.objectId,
           contentType: content?.dataType,
           fields: content?.fields,
+          allFields: content?.fields ? Object.keys(content.fields) : [],
         });
         
         if (content?.dataType === 'moveObject' && content.fields) {
@@ -557,10 +605,18 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
             content.fields.dataset_id?.toString() ||
             content.fields.datasetId?.toString() ||
             content.fields['dataset_id']?.toString();
-          console.log('Found dataset ID in NFT:', datasetId, 'Fields:', Object.keys(content.fields));
-          if (datasetId !== undefined && datasetId !== null) {
+          console.log('Found dataset ID in NFT:', datasetId, 'All fields:', Object.keys(content.fields), 'Field values:', content.fields);
+          if (datasetId !== undefined && datasetId !== null && datasetId !== '') {
             purchasedDatasetIds.add(datasetId.toString());
+            console.log('Added dataset ID to purchased set:', datasetId);
+          } else {
+            console.warn('Dataset ID not found or invalid:', datasetId, 'Available fields:', Object.keys(content.fields));
           }
+        } else {
+          console.warn('Object is not a moveObject or has no fields:', {
+            dataType: content?.dataType,
+            hasFields: !!content?.fields,
+          });
         }
       }
 

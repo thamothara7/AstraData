@@ -34,15 +34,7 @@ export default function PurchasedDatasets() {
   }, [isConnected, address]);
 
   // Also reload when component becomes visible (when switching to this tab)
-  useEffect(() => {
-    if (isConnected && address) {
-      // Small delay to ensure we're on the tab
-      const timer = setTimeout(() => {
-        loadPurchasedDatasets();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+  // Removed to prevent infinite loops - rely on key prop from App.tsx instead
 
   const loadPurchasedDatasets = async () => {
     if (!address) {
