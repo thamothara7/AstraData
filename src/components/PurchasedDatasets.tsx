@@ -4,7 +4,6 @@ import { Search, Loader2, Database, Download, AlertCircle } from 'lucide-react';
 import DatasetCard from './DatasetCard';
 import { Dataset } from '../types';
 import { getPurchasedDatasets } from '../services/marketplace';
-import { formatAddress } from '../utils/format';
 
 export default function PurchasedDatasets() {
   const { isConnected, currentWallet, currentAccount } = useWalletKit();
