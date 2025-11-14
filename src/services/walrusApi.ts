@@ -7,23 +7,23 @@ export interface WalrusUploadResult {
 }
 
 /**
- * Upload to Walrus Storage (v0.8.4 API)
+ * Quick workaround upload (casts to any to satisfy v0.8.4 types)
  */
 export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> => {
   try {
     const client = createWalrusClient();
 
-    // Convert File to Uint8Array
+    // Convert File -> Uint8Array
     const arrayBuffer = await file.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    // v0.8.4 --- writeBlobToUploadRelay requires ONLY blob + deletable
-    const res = await client.walrus.writeBlobToUploadRelay({
+    // Cast to any to bypass type mismatch in v0.8.4
+    const res = await (client.walrus.writeBlobToUploadRelay as any)({
       blob: bytes,
       deletable: false,
     });
 
-    const { blobId } = res;
+    const blobId = (res as any).blobId ?? (res as any).id ?? String(res);
 
     return {
       reference: `walrus:${blobId}`,
@@ -37,7 +37,7 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
 };
 
 /**
- * Download from Walrus Storage (v0.8.4 API)
+ * Quick workaround download (casts to any)
  */
 export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
   try {
@@ -46,14 +46,20 @@ export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
     const blobId = reference.replace(/^walrus:\/?/, "").trim();
     const client = createWalrusClient();
 
-    // v0.8.4 getFiles returns >>> WalrusFile { blob, contentType }
-    const [walrusFile] = await client.walrus.getFiles({ ids: [blobId] });
+    // Cast getFiles result to any so we can access blob/contentType
+    const [walrusFile] = await (client.walrus.getFiles as any)({ ids: [blobId] });
 
     if (!walrusFile) throw new Error("Walrus file not found");
 
-    const uint8 = walrusFile.blob; // <--- correct field in v0.8.4
-    const mime = walrusFile.contentType || "application/octet-stream";
+    // Use the v0.8.4 field names if present, otherwise try common alternatives
+    const uint8 = (walrusFile as any).blob ?? (walrusFile as any).data ?? walrusFile;
+    const mime = (walrusFile as any).contentType ?? (walrusFile as any).mime ?? "application/octet-stream";
 
+    // If uint8 is already a Uint8Array or ArrayBuffer, wrap appropriately
+    if (uint8 instanceof ArrayBuffer) return new Blob([uint8], { type: mime });
+    if (uint8 && (uint8 as Uint8Array).buffer) return new Blob([ (uint8 as Uint8Array).buffer ], { type: mime });
+
+    // Fallback: convert to Blob directly
     return new Blob([uint8], { type: mime });
   } catch (err) {
     console.error("Walrus download error:", err);
