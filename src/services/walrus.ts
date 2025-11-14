@@ -54,43 +54,73 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
  */
 export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
   try {
-    // Extract the actual reference from walrus:// format if needed
-    const cleanRef = reference.replace(/^walrus:\/\//, '');
-    
-    // TODO: Replace with actual Walrus API call
-    // For now, we'll try to fetch from a Walrus gateway or API
-    // Example: const response = await fetch(`https://walrus-gateway-url/${cleanRef}`);
-    
-    // If reference is a URL, try fetching directly
-    if (reference.startsWith('http://') || reference.startsWith('https://')) {
-      const response = await fetch(reference);
-      if (!response.ok) {
-        throw new Error(`Failed to download: ${response.statusText}`);
-      }
-      return await response.blob();
+    if (!reference || reference.trim() === '') {
+      throw new Error('Download reference is empty');
     }
 
-    // For walrus:// references, you would use the Walrus SDK or API
-    // Example with Walrus SDK:
-    // import { WalrusClient } from '@mysten/walrus';
-    // const client = new WalrusClient();
-    // const blob = await client.download(cleanRef);
+    const cleanRef = reference.replace(/^walrus:\/\//, '');
+
+    // Check if this is a mock reference (starts with timestamp pattern like "1763116372765-")
+    const isMockReference = /^\d{13,}-/.test(cleanRef) || cleanRef.includes('mock') || cleanRef.includes('demo');
     
-    // Temporary: Try to construct a download URL (this is a placeholder)
-    // In production, use the actual Walrus API endpoint
+    // If it's already a full HTTP/HTTPS URL, use it directly
+    if (reference.startsWith('http://') || reference.startsWith('https://')) {
+      try {
+        const response = await fetch(reference);
+        if (!response.ok) {
+          throw new Error(`Failed to download: ${response.statusText} (${response.status})`);
+        }
+        return await response.blob();
+      } catch (fetchError: any) {
+        if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('ERR_NAME_NOT_RESOLVED')) {
+          throw new Error('Unable to reach download server. The file may be temporarily unavailable or the URL is incorrect.');
+        }
+        throw fetchError;
+      }
+    }
+
+    // If it's a mock reference and no API is configured, provide helpful error
+    if (isMockReference) {
+      const walrusApiUrl = import.meta.env.VITE_WALRUS_API_URL || '';
+      if (!walrusApiUrl) {
+        throw new Error(
+          'This is a demo/mock dataset. The actual file is not available for download.\n\n' +
+          'To enable downloads:\n' +
+          '1. Configure VITE_WALRUS_API_URL in your environment variables\n' +
+          '2. Upload datasets with actual Walrus storage integration\n' +
+          '3. Contact the dataset owner for the actual file'
+        );
+      }
+    }
+
+    // Try Walrus API if configured
     const walrusApiUrl = import.meta.env.VITE_WALRUS_API_URL || '';
     if (walrusApiUrl) {
-      const response = await fetch(`${walrusApiUrl}/download/${encodeURIComponent(cleanRef)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to download from Walrus: ${response.statusText}`);
+      try {
+        const response = await fetch(`${walrusApiUrl}/download/${encodeURIComponent(cleanRef)}`);
+        if (!response.ok) {
+          throw new Error(`Failed to download from Walrus: ${response.statusText} (${response.status})`);
+        }
+        return await response.blob();
+      } catch (fetchError: any) {
+        if (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('ERR_NAME_NOT_RESOLVED')) {
+          throw new Error('Unable to reach Walrus API. Please check your network connection or contact support.');
+        }
+        throw fetchError;
       }
-      return await response.blob();
     }
 
-    throw new Error('Walrus API URL not configured. Set VITE_WALRUS_API_URL.');
+    // If no Walrus API URL and not a direct HTTP URL
+    throw new Error(
+      'Walrus API URL not configured.\n\n' +
+      'Please set VITE_WALRUS_API_URL in your environment variables to enable downloads.'
+    );
   } catch (error) {
     console.error('Walrus download error:', error);
-    throw error instanceof Error ? error : new Error('Failed to download from Walrus storage');
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Failed to download from Walrus storage');
   }
 };
 

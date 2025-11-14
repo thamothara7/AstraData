@@ -96,7 +96,16 @@ export default function PurchasedDatasets() {
       console.error('Download error:', error);
       setDownloadStatus('error');
       const errorMessage = error.message || 'Failed to download dataset';
-      alert(`${errorMessage}\n\nIf this problem persists, please check:\n- Your internet connection\n- The dataset file may be temporarily unavailable\n- Contact support if the issue continues`);
+      
+      // Show error in a more user-friendly way
+      const isMockError = errorMessage.includes('demo/mock') || errorMessage.includes('mock dataset');
+      
+      if (isMockError) {
+        alert(errorMessage);
+      } else {
+        alert(`${errorMessage}\n\nIf this problem persists, please check:\n- Your internet connection\n- The dataset file may be temporarily unavailable\n- Contact support if the issue continues`);
+      }
+      
       setDownloading(null);
     }
   };
