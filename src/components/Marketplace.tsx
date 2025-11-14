@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useWalletKit } from '@mysten/wallet-kit';
 import { Search, Loader2, Database } from 'lucide-react';
 import DatasetCard from './DatasetCard';
 import PurchaseModal from './PurchaseModal';
 import { Dataset } from '../types';
+import { hasPurchasedDataset } from '../services/marketplace';
 
 interface MarketplaceProps {
   datasets: Dataset[];
@@ -11,9 +13,40 @@ interface MarketplaceProps {
 }
 
 export default function Marketplace({ datasets, loading, onRefresh }: MarketplaceProps) {
+  const { isConnected, currentWallet, currentAccount } = useWalletKit();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+  const [purchasedDatasetIds, setPurchasedDatasetIds] = useState<Set<string>>(new Set());
+
+  // Extract wallet address
+  const address =
+    currentAccount?.address ||
+    // @ts-ignore
+    (currentWallet as any)?.accounts?.[0]?.address ||
+    // @ts-ignore
+    (currentWallet as any)?.wallet?.accounts?.[0]?.address ||
+    // @ts-ignore
+    (currentWallet as any)?.address;
+
+  // Check which datasets are already purchased
+  useEffect(() => {
+    if (isConnected && address && datasets.length > 0) {
+      const checkPurchases = async () => {
+        const purchased = new Set<string>();
+        for (const dataset of datasets) {
+          const hasPurchased = await hasPurchasedDataset(address, dataset.id);
+          if (hasPurchased) {
+            purchased.add(dataset.id);
+          }
+        }
+        setPurchasedDatasetIds(purchased);
+      };
+      checkPurchases();
+    } else {
+      setPurchasedDatasetIds(new Set());
+    }
+  }, [isConnected, address, datasets]);
 
   const categories = ['all', 'AI/ML', 'Finance', 'Healthcare', 'IoT', 'Social', 'Gaming', 'Other'];
 
@@ -22,7 +55,9 @@ export default function Marketplace({ datasets, loading, onRefresh }: Marketplac
       dataset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       dataset.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || dataset.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    // Filter out purchased datasets
+    const notPurchased = !purchasedDatasetIds.has(dataset.id);
+    return matchesSearch && matchesCategory && notPurchased;
   });
 
   return (

@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useWalletKit } from '@mysten/wallet-kit';
-import { Search, Loader2, Database, Download, AlertCircle } from 'lucide-react';
+import { Search, Loader2, Database, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
 import DatasetCard from './DatasetCard';
 import { Dataset } from '../types';
 import { getPurchasedDatasets } from '../services/marketplace';
+import { downloadFromWalrus } from '../services/walrus';
 
 export default function PurchasedDatasets() {
   const { isConnected, currentWallet, currentAccount } = useWalletKit();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Extract wallet address
   const address =
@@ -48,6 +51,41 @@ export default function PurchasedDatasets() {
       dataset.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
+
+  const handleDownload = async (dataset: Dataset) => {
+    if (!dataset.walrusRef) {
+      alert('Dataset download reference not available');
+      return;
+    }
+
+    try {
+      setDownloading(dataset.id);
+      setDownloadStatus('idle');
+
+      const blob = await downloadFromWalrus(dataset.walrusRef);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dataset.name}.${dataset.format || 'bin'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setDownloadStatus('success');
+      setTimeout(() => {
+        setDownloadStatus('idle');
+        setDownloading(null);
+      }, 2000);
+    } catch (error: any) {
+      console.error('Download error:', error);
+      setDownloadStatus('error');
+      alert(error.message || 'Failed to download dataset');
+      setDownloading(null);
+    }
+  };
 
   if (!isConnected) {
     return (
@@ -119,14 +157,32 @@ export default function PurchasedDatasets() {
               <DatasetCard dataset={dataset} onPurchase={() => {}} />
               <div className="absolute top-4 right-4 z-20">
                 <button
-                  onClick={() => {
-                    // TODO: Implement download from Walrus
-                    alert('Download functionality coming soon!');
-                  }}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2 shadow-md"
+                  onClick={() => handleDownload(dataset)}
+                  disabled={downloading === dataset.id}
+                  className={`px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2 shadow-md ${
+                    downloading === dataset.id
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : downloadStatus === 'success' && downloading === dataset.id
+                      ? 'bg-green-600'
+                      : 'bg-green-600 hover:bg-green-700'
+                  } text-white`}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Download</span>
+                  {downloading === dataset.id ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Downloading...</span>
+                    </>
+                  ) : downloadStatus === 'success' && downloading === dataset.id ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Downloaded</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Download</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

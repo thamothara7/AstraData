@@ -1,6 +1,6 @@
 module astradata::marketplace {
     use sui::event;
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
     use sui::coin::{Self, Coin};
@@ -35,6 +35,16 @@ module astradata::marketplace {
         id: UID,
     }
 
+    /// NFT representing a purchased dataset
+    struct DatasetNFT has key, store {
+        id: UID,
+        dataset_id: u64,
+        name: vector<u8>,
+        walrus_ref: vector<u8>,
+        seal_hash: vector<u8>,
+        purchase_timestamp: u64,
+    }
+
     /// Events
     struct DatasetRegistered has copy, drop {
         dataset_id: u64,
@@ -52,6 +62,7 @@ module astradata::marketplace {
         seller: address,
         price: u64,
         timestamp: u64,
+        nft_id: ID,
     }
 
     /// Errors
@@ -130,7 +141,7 @@ module astradata::marketplace {
         });
     }
 
-    /// Purchase a dataset
+    /// Purchase a dataset and mint NFT
     public fun purchase_dataset(
         marketplace: &mut Marketplace,
         dataset_id: u64,
@@ -161,12 +172,28 @@ module astradata::marketplace {
 
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
 
+        // Create NFT for the purchased dataset
+        let nft = DatasetNFT {
+            id: object::new(ctx),
+            dataset_id,
+            name: dataset.name,
+            walrus_ref: dataset.walrus_ref,
+            seal_hash: dataset.seal_hash,
+            purchase_timestamp: timestamp,
+        };
+
+        let nft_id = object::id(&nft);
+        
+        // Transfer NFT to buyer
+        transfer::transfer(nft, buyer);
+
         event::emit(DatasetPurchased {
             dataset_id,
             buyer,
             seller,
             price,
             timestamp,
+            nft_id,
         });
     }
 

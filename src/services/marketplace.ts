@@ -47,8 +47,6 @@ const PURCHASE_DATASET_TARGET = () =>
   `${config.sui.marketplacePackageId}::marketplace::purchase_dataset` as `${string}::${string}::${string}`;
 const DATASET_REGISTERED_EVENT = () =>
   `${config.sui.marketplacePackageId}::marketplace::DatasetRegistered`;
-const DATASET_PURCHASED_EVENT = () =>
-  `${config.sui.marketplacePackageId}::marketplace::DatasetPurchased`;
 
 let cachedDatasetsTableId: string | null = null;
 
@@ -446,27 +444,38 @@ export const purchaseDataset = async (
 };
 
 /**
- * Get datasets purchased by a specific address
+ * Get datasets purchased by a specific address (via NFT ownership)
  */
 export const getPurchasedDatasets = async (buyerAddress: string): Promise<Dataset[]> => {
   ensureChainConfig();
 
   try {
-    // Query on-chain events for DatasetPurchased events where buyer matches
-    const events = await suiClient.queryEvents({
-      query: {
-        MoveEventType: DATASET_PURCHASED_EVENT(),
+    // Query owned objects of type DatasetNFT
+    const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
+    const ownedObjects = await suiClient.getOwnedObjects({
+      owner: buyerAddress,
+      filter: {
+        StructType: nftType,
       },
-      limit: 100,
-      order: 'descending',
+      options: {
+        showContent: true,
+        showType: true,
+      },
     });
 
-    // Filter events by buyer address and extract dataset IDs
+    if (!ownedObjects.data || ownedObjects.data.length === 0) {
+      return [];
+    }
+
+    // Extract dataset IDs from NFTs
     const purchasedDatasetIds = new Set<string>();
-    for (const event of events.data) {
-      const parsedJson = event.parsedJson as any;
-      if (parsedJson?.buyer?.toLowerCase() === buyerAddress.toLowerCase()) {
-        purchasedDatasetIds.add(parsedJson.dataset_id?.toString() || parsedJson.datasetId?.toString());
+    for (const obj of ownedObjects.data) {
+      const content = obj.data?.content as any;
+      if (content?.dataType === 'moveObject' && content.fields) {
+        const datasetId = content.fields.dataset_id?.toString();
+        if (datasetId) {
+          purchasedDatasetIds.add(datasetId);
+        }
       }
     }
 
@@ -486,5 +495,47 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
   } catch (error) {
     console.error('Failed to fetch purchased datasets:', error);
     throw error;
+  }
+};
+
+/**
+ * Check if a user has purchased a specific dataset (owns the NFT)
+ */
+export const hasPurchasedDataset = async (
+  buyerAddress: string,
+  datasetId: string
+): Promise<boolean> => {
+  ensureChainConfig();
+
+  try {
+    const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
+    const ownedObjects = await suiClient.getOwnedObjects({
+      owner: buyerAddress,
+      filter: {
+        StructType: nftType,
+      },
+      options: {
+        showContent: true,
+      },
+    });
+
+    if (!ownedObjects.data) {
+      return false;
+    }
+
+    for (const obj of ownedObjects.data) {
+      const content = obj.data?.content as any;
+      if (content?.dataType === 'moveObject' && content.fields) {
+        const nftDatasetId = content.fields.dataset_id?.toString();
+        if (nftDatasetId === datasetId) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Failed to check purchase status:', error);
+    return false;
   }
 };
