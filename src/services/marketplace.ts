@@ -15,12 +15,20 @@ type WalletAccount = {
   label?: string;
 };
 
+// Wallet adapter from @mysten/wallet-kit
 type WalletSigner = {
-  signAndExecuteTransactionBlock: (args: {
-    transactionBlock: TransactionBlock | Uint8Array | string;
-    options?: Record<string, any>;
-    chain?: string;
+  signAndExecuteTransactionBlock: (input: {
+    transactionBlock: TransactionBlock;
     account?: WalletAccount;
+    chain?: string;
+    options?: {
+      showEffects?: boolean;
+      showEvents?: boolean;
+      showInput?: boolean;
+      showObjectChanges?: boolean;
+      showBalanceChanges?: boolean;
+    };
+    requestType?: 'WaitForEffectsCert' | 'WaitForLocalExecution';
   }) => Promise<any>;
 };
 
@@ -353,9 +361,9 @@ export const uploadDataset = async (
 
     const response = await signer.signAndExecuteTransactionBlock({
       transactionBlock: tx,
+      account: accountForSigning,
       chain: walletChainId,
       options: { showEvents: true, showEffects: true },
-      account: accountForSigning,
     });
 
     const txDigest = response.digest ?? response.effects?.transactionDigest;
@@ -427,9 +435,9 @@ export const purchaseDataset = async (
 
   const response = await signer.signAndExecuteTransactionBlock({
     transactionBlock: tx,
+    account: accountForSigning,
     chain: walletChainId,
     options: { showEffects: true },
-    account: accountForSigning,
   });
 
   return response.digest;

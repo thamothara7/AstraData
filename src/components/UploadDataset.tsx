@@ -58,16 +58,39 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
       setUploadStatus('idle');
       setErrorMessage('');
 
-      // @ts-ignore - wallet-kit API typing issue
-      const walletAddress = currentWallet?.accounts?.[0]?.address || currentWallet?.wallet?.accounts?.[0]?.address || (currentWallet as any)?.address;
-      
+      // Extract wallet address
+      const walletAddress =
+        currentAccount?.address ||
+        // @ts-ignore - wallet-kit API typing issue
+        currentWallet?.accounts?.[0]?.address ||
+        // @ts-ignore
+        (currentWallet as any)?.wallet?.accounts?.[0]?.address ||
+        // @ts-ignore
+        (currentWallet as any)?.address;
+
       if (!walletAddress) {
         throw new Error('Wallet address not found');
       }
 
-      const dataset = await uploadDataset(formData, walletAddress, currentWallet, currentAccount);
+      // Use currentWallet as the signer - it's the wallet adapter with signAndExecuteTransactionBlock
+      // @ts-ignore - wallet-kit types may not expose signAndExecuteTransactionBlock directly
+      const signer = currentWallet;
+
+      if (!signer || typeof signer.signAndExecuteTransactionBlock !== 'function') {
+        console.error('Wallet signer check failed:', { 
+          hasSigner: !!signer, 
+          hasMethod: typeof signer?.signAndExecuteTransactionBlock,
+          currentWallet 
+        });
+        throw new Error('Unable to get wallet signer. Please reconnect your wallet.');
+      }
+
+      // @ts-ignore - Type mismatch between wallet-kit WalletAdapter and our WalletSigner type due to different TransactionBlock versions, but runtime works
+      const dataset = await uploadDataset(formData, walletAddress, signer, currentAccount);
+
+
       setUploadStatus('success');
-      
+
       // Reset form
       setFormData({
         name: '',
@@ -76,11 +99,9 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
         price: '',
         file: null as any,
       });
-      
-      // Notify parent
+
       onUploaded(dataset);
 
-      // Reset status after 3 seconds
       setTimeout(() => setUploadStatus('idle'), 3000);
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -123,29 +144,30 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
               id="file-upload"
               disabled={uploading}
             />
-            <label
-              htmlFor="file-upload"
-              className="cursor-pointer flex flex-col items-center"
-            >
+            <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
               {formData.file ? (
                 <>
                   <FileText className="w-12 h-12 text-primary-500 dark:text-primary-400 mb-2" />
                   <p className="text-gray-900 dark:text-white font-medium">{formData.file.name}</p>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">{formatFileSize(formData.file.size)}</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+                    {formatFileSize(formData.file.size)}
+                  </p>
                 </>
               ) : (
                 <>
                   <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500 mb-2" />
                   <p className="text-gray-700 dark:text-gray-300">Click to upload or drag and drop</p>
-                  <p className="text-gray-500 dark:text-gray-500 text-sm mt-1">CSV, JSON, TXT, or other data formats</p>
+                  <p className="text-gray-500 dark:text-gray-500 text-sm mt-1">
+                    CSV, JSON, TXT, or other data formats
+                  </p>
                 </>
               )}
             </label>
           </div>
         </div>
 
-        {/* Dataset Name */}
-        <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-gray-900/50 transition-colors duration-200">
+        {/* Name */}
+        <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Dataset Name *
           </label>
@@ -154,38 +176,36 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder="e.g., Stock Market Data 2024"
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200"
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg"
             disabled={uploading}
             required
           />
         </div>
 
         {/* Description */}
-        <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-gray-900/50 transition-colors duration-200">
+        <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Description *
           </label>
           <textarea
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            placeholder="Describe your dataset, its contents, and use cases..."
+            placeholder="Describe your dataset..."
             rows={4}
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none transition-colors duration-200"
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg"
             disabled={uploading}
             required
           />
         </div>
 
-        {/* Category and Price */}
+        {/* Category + Price */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-gray-900/50 transition-colors duration-200">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Category *
-            </label>
+          <div className="bg-white dark:bg-gray-800/50 rounded-xl p-6 border dark:border-gray-700">
+            <label className="block text-sm mb-2">Category *</label>
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border dark:border-gray-700 rounded-lg"
               disabled={uploading}
               required
             >
@@ -197,27 +217,24 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
             </select>
           </div>
 
-          <div className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-gray-900/50 transition-colors duration-200">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Price (SUI) *
-            </label>
+          <div className="bg-white dark:bg-gray-800/50 rounded-xl p-6 border dark:border-gray-700">
+            <label className="block text-sm mb-2">Price (SUI) *</label>
             <input
               type="number"
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               placeholder="0.0000"
               step="0.0001"
-              min="0"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border dark:border-gray-700 rounded-lg"
               disabled={uploading}
               required
             />
           </div>
         </div>
 
-        {/* Status Messages */}
+        {/* Status */}
         {uploadStatus === 'success' && (
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-500/50 rounded-lg p-4">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-600 rounded-lg p-4">
             <div className="flex items-center space-x-2 text-green-700 dark:text-green-400">
               <CheckCircle2 className="w-5 h-5" />
               <span>Dataset uploaded successfully!</span>
@@ -226,7 +243,7 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
         )}
 
         {uploadStatus === 'error' && errorMessage && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/50 rounded-lg p-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-600 rounded-lg p-4">
             <div className="flex items-center space-x-2 text-red-700 dark:text-red-400">
               <AlertCircle className="w-5 h-5" />
               <span>{errorMessage}</span>
@@ -234,16 +251,16 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
           </div>
         )}
 
-        {/* Submit Button */}
+        {/* Submit */}
         <button
           type="submit"
           disabled={uploading || !isConnected}
-          className="w-full py-4 bg-primary-600 hover:bg-primary-700 dark:bg-primary-700 dark:hover:bg-primary-800 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 shadow-md hover:shadow-lg disabled:shadow-none"
+          className="w-full py-4 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-lg flex items-center justify-center space-x-2"
         >
           {uploading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Uploading to Walrus & Creating Truth Anchor...</span>
+              <span>Uploading...</span>
             </>
           ) : (
             <>
@@ -256,4 +273,3 @@ export default function UploadDataset({ onUploaded }: UploadDatasetProps) {
     </div>
   );
 }
-
