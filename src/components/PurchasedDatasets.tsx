@@ -67,7 +67,7 @@ export default function PurchasedDatasets() {
 
   const handleDownload = async (dataset: Dataset) => {
     if (!dataset.walrusRef) {
-      alert('Dataset download reference not available');
+      alert('Dataset download reference not available. Please contact the dataset owner.');
       return;
     }
 
@@ -95,7 +95,8 @@ export default function PurchasedDatasets() {
     } catch (error: any) {
       console.error('Download error:', error);
       setDownloadStatus('error');
-      alert(error.message || 'Failed to download dataset');
+      const errorMessage = error.message || 'Failed to download dataset';
+      alert(`${errorMessage}\n\nIf this problem persists, please check:\n- Your internet connection\n- The dataset file may be temporarily unavailable\n- Contact support if the issue continues`);
       setDownloading(null);
     }
   };
@@ -181,34 +182,36 @@ export default function PurchasedDatasets() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredDatasets.map((dataset) => (
-            <div key={dataset.id} className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary-500/50 dark:hover:border-primary-500/50 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-gray-900/50 hover:shadow-md dark:hover:shadow-gray-900/70 relative">
-              <DatasetCard dataset={dataset} onPurchase={() => {}} />
-              <div className="absolute bottom-4 right-4 z-20">
+            <div key={dataset.id} className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary-500/50 dark:hover:border-primary-500/50 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-gray-900/50 hover:shadow-md dark:hover:shadow-gray-900/70 flex flex-col">
+              <div className="flex-1">
+                <DatasetCard dataset={dataset} onPurchase={() => {}} />
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
                 <button
                   onClick={() => handleDownload(dataset)}
                   disabled={downloading === dataset.id}
-                  className={`px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2 shadow-md ${
+                  className={`w-full px-4 py-3 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2 shadow-md font-medium ${
                     downloading === dataset.id
                       ? 'bg-gray-400 cursor-not-allowed'
                       : downloadStatus === 'success' && downloading === dataset.id
                       ? 'bg-green-600'
-                      : 'bg-green-600 hover:bg-green-700'
+                      : 'bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800'
                   } text-white`}
                 >
                   {downloading === dataset.id ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       <span>Downloading...</span>
                     </>
                   ) : downloadStatus === 'success' && downloading === dataset.id ? (
                     <>
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-5 h-5" />
                       <span>Downloaded</span>
                     </>
                   ) : (
                     <>
-                      <Download className="w-4 h-4" />
-                      <span>Download</span>
+                      <Download className="w-5 h-5" />
+                      <span>Download Dataset</span>
                     </>
                   )}
                 </button>
