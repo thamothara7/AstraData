@@ -455,11 +455,26 @@ export const purchaseDataset = async (
     objectChanges: response.objectChanges,
   });
 
-  // Check if NFT was created
-  const createdObjects = response.objectChanges?.filter(
-    (change: any) => change.type === 'created' && change.objectType?.includes('DatasetNFT')
+  // Check if NFT was created - look for any created objects
+  const allCreated = response.objectChanges?.filter(
+    (change: any) => change.type === 'created'
   );
-  console.log('Created NFT objects:', createdObjects);
+  console.log('All created objects:', allCreated);
+  
+  // Check if NFT was created
+  const createdNFTs = response.objectChanges?.filter(
+    (change: any) => {
+      const type = change.objectType || change.type || '';
+      return type.includes('DatasetNFT') || type.includes('marketplace');
+    }
+  );
+  console.log('Created NFT objects (filtered):', createdNFTs);
+  
+  // Also check transferred objects (NFT might be transferred, not created)
+  const transferred = response.objectChanges?.filter(
+    (change: any) => change.type === 'transferred' || change.type === 'mutated'
+  );
+  console.log('Transferred/mutated objects:', transferred);
 
   return response.digest;
 };
@@ -547,8 +562,20 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
         objectId: obj.data?.objectId,
         type: obj.data?.type,
         hasContent: !!obj.data?.content,
+        content: obj.data?.content,
       })));
       console.log('Total owned objects:', allOwned.data?.length || 0);
+      
+      // Check if any of the owned objects match our NFT type pattern
+      const nftObjects = allOwned.data?.filter(obj => 
+        obj.data?.type?.includes('DatasetNFT') || 
+        obj.data?.type?.includes('marketplace')
+      );
+      console.log('Objects matching NFT pattern:', nftObjects?.map(obj => ({
+        objectId: obj.data?.objectId,
+        type: obj.data?.type,
+        content: obj.data?.content,
+      })));
     } catch (error) {
       console.warn('Error querying all owned objects:', error);
     }
@@ -557,7 +584,73 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
     let cursor: string | null | undefined;
     let hasMore = true;
 
-    while (hasMore) {
+    // Try querying without filter first, then filter manually
+    console.log('Querying owned objects without filter to find NFTs...');
+    const allOwnedObjects = await suiClient.getOwnedObjects({
+      owner: buyerAddress,
+      options: {
+        showContent: true,
+        showType: true,
+      },
+      limit: 100,
+    });
+    
+    console.log('All owned objects for filtering:', allOwnedObjects.data?.map(obj => ({
+      objectId: obj.data?.objectId,
+      type: obj.data?.type,
+    })));
+    
+    // Filter for DatasetNFT objects manually
+    const nftObjects = allOwnedObjects.data?.filter(obj => {
+      const type = obj.data?.type || '';
+      return type.includes('DatasetNFT') || type.includes('marketplace::DatasetNFT');
+    }) || [];
+    
+    console.log('Found NFT objects:', nftObjects.length, nftObjects.map(obj => ({
+      objectId: obj.data?.objectId,
+      type: obj.data?.type,
+    })));
+
+    // Process the NFT objects directly instead of using pagination
+    for (const obj of nftObjects) {
+      console.log('Processing NFT object:', {
+        objectId: obj.data?.objectId,
+        type: obj.data?.type,
+        owner: obj.data?.owner,
+        content: obj.data?.content,
+      });
+      
+      const content = obj.data?.content as any;
+      console.log('NFT object content:', {
+        objectId: obj.data?.objectId,
+        contentType: content?.dataType,
+        fields: content?.fields,
+        allFields: content?.fields ? Object.keys(content.fields) : [],
+      });
+      
+      if (content?.dataType === 'moveObject' && content.fields) {
+        // Try different possible field names
+        const datasetId = 
+          content.fields.dataset_id?.toString() ||
+          content.fields.datasetId?.toString() ||
+          content.fields['dataset_id']?.toString();
+        console.log('Found dataset ID in NFT:', datasetId, 'All fields:', Object.keys(content.fields), 'Field values:', content.fields);
+        if (datasetId !== undefined && datasetId !== null && datasetId !== '') {
+          purchasedDatasetIds.add(datasetId.toString());
+          console.log('Added dataset ID to purchased set:', datasetId);
+        } else {
+          console.warn('Dataset ID not found or invalid:', datasetId, 'Available fields:', Object.keys(content.fields));
+        }
+      } else {
+        console.warn('Object is not a moveObject or has no fields:', {
+          dataType: content?.dataType,
+          hasFields: !!content?.fields,
+        });
+      }
+    }
+
+    // Old pagination code - keeping for reference but not using
+    while (false && hasMore) {
       const ownedObjects = await suiClient.getOwnedObjects({
         owner: buyerAddress,
         filter: {
