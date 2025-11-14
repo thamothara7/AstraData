@@ -17,16 +17,15 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
     const arrayBuffer = await file.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    // Upload using public upload relay
+    // Upload using updated API (NO epochs)
     const { blobId } = await client.walrus.writeBlobToUploadRelay({
       blob: bytes,
       deletable: false,
-      epochs: 3,
     });
 
     return {
       reference: `walrus:${blobId}`,
-      hash: blobId, // blobId IS the hash
+      hash: blobId,
       size: file.size,
     };
   } catch (err) {
@@ -40,24 +39,20 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
  */
 export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
   try {
-    if (!reference) {
-      throw new Error("Download reference is empty");
-    }
+    if (!reference) throw new Error("Download reference is empty");
 
     const blobId = reference.replace(/^walrus:\/?/, "").trim();
     const client = createWalrusClient();
 
-    // SDK read (NO HTTP gateway)
     const [walrusFile] = await client.walrus.getFiles({ ids: [blobId] });
 
-    if (!walrusFile) {
-      throw new Error("Walrus file not found");
-    }
+    if (!walrusFile) throw new Error("Walrus file not found");
 
-    const arrayBuffer = await walrusFile.arrayBuffer();
-    const mime = walrusFile.contentType || "application/octet-stream";
+    // Updated WalrusFile API
+    const uint8 = walrusFile.data;      // Uint8Array
+    const mime = walrusFile.mime || "application/octet-stream";
 
-    return new Blob([arrayBuffer], { type: mime });
+    return new Blob([uint8.buffer], { type: mime });
   } catch (err) {
     console.error("Walrus download error:", err);
     throw new Error("Failed to download from Walrus storage");
