@@ -7,23 +7,29 @@ export interface WalrusUploadResult {
 }
 
 /**
- * Quick workaround upload (casts to any to satisfy v0.8.4 types)
+ * Upload to Walrus Storage (compatible with @mysten/walrus@0.8.4)
  */
 export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> => {
   try {
     const client = createWalrusClient();
 
-    // Convert File -> Uint8Array
+    // Convert File → Uint8Array
     const arrayBuffer = await file.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    // Cast to any to bypass type mismatch in v0.8.4
+    // v0.8.4 writeBlobToUploadRelay requires fields TypeScript doesn't know about.
+    // So we cast to any to bypass strict TS types.
     const res = await (client.walrus.writeBlobToUploadRelay as any)({
       blob: bytes,
       deletable: false,
     });
 
-    const blobId = (res as any).blobId ?? (res as any).id ?? String(res);
+    // Extract blobId (naming changes across versions)
+    const blobId =
+      res?.blobId ??
+      res?.id ??
+      res ?? // fallback
+      "";
 
     return {
       reference: `walrus:${blobId}`,
@@ -37,7 +43,7 @@ export const uploadToWalrus = async (file: File): Promise<WalrusUploadResult> =>
 };
 
 /**
- * Quick workaround download (casts to any)
+ * Download from Walrus Storage (compatible with @mysten/walrus@0.8.4)
  */
 export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
   try {
@@ -46,21 +52,34 @@ export const downloadFromWalrus = async (reference: string): Promise<Blob> => {
     const blobId = reference.replace(/^walrus:\/?/, "").trim();
     const client = createWalrusClient();
 
-    // Cast getFiles result to any so we can access blob/contentType
-    const [walrusFile] = await (client.walrus.getFiles as any)({ ids: [blobId] });
+    // v0.8.4 getFiles also has flexible shapes → cast to any
+    const [walrusFile] = await (client.walrus.getFiles as any)({
+      ids: [blobId],
+    });
 
-    if (!walrusFile) throw new Error("Walrus file not found");
+    if (!walrusFile) {
+      throw new Error("Walrus file not found");
+    }
 
-    // Use the v0.8.4 field names if present, otherwise try common alternatives
-    const uint8 = (walrusFile as any).blob ?? (walrusFile as any).data ?? walrusFile;
-    const mime = (walrusFile as any).contentType ?? (walrusFile as any).mime ?? "application/octet-stream";
+    // Extract raw data (SDK uses blob, new ones use data)
+    const raw =
+      (walrusFile as any).blob ??
+      (walrusFile as any).data ??
+      walrusFile;
 
-    // If uint8 is already a Uint8Array or ArrayBuffer, wrap appropriately
-    if (uint8 instanceof ArrayBuffer) return new Blob([uint8], { type: mime });
-    if (uint8 && (uint8 as Uint8Array).buffer) return new Blob([ (uint8 as Uint8Array).buffer ], { type: mime });
+    // Ensure Uint8Array
+    const uint8 =
+      raw instanceof Uint8Array ? raw : new Uint8Array(raw);
 
-    // Fallback: convert to Blob directly
-    return new Blob([uint8], { type: mime });
+    // SAFE conversion (fixes SharedArrayBuffer build error)
+    const safeArray = new Uint8Array(uint8).buffer;
+
+    const mime =
+      (walrusFile as any).contentType ??
+      (walrusFile as any).mime ??
+      "application/octet-stream";
+
+    return new Blob([safeArray], { type: mime });
   } catch (err) {
     console.error("Walrus download error:", err);
     throw new Error("Failed to download from Walrus storage");
