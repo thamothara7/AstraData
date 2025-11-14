@@ -47,6 +47,8 @@ const PURCHASE_DATASET_TARGET = () =>
   `${config.sui.marketplacePackageId}::marketplace::purchase_dataset` as `${string}::${string}::${string}`;
 const DATASET_REGISTERED_EVENT = () =>
   `${config.sui.marketplacePackageId}::marketplace::DatasetRegistered`;
+const DATASET_PURCHASED_EVENT = () =>
+  `${config.sui.marketplacePackageId}::marketplace::DatasetPurchased`;
 
 let cachedDatasetsTableId: string | null = null;
 
@@ -441,4 +443,48 @@ export const purchaseDataset = async (
   });
 
   return response.digest;
+};
+
+/**
+ * Get datasets purchased by a specific address
+ */
+export const getPurchasedDatasets = async (buyerAddress: string): Promise<Dataset[]> => {
+  ensureChainConfig();
+
+  try {
+    // Query on-chain events for DatasetPurchased events where buyer matches
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveEventType: DATASET_PURCHASED_EVENT(),
+      },
+      limit: 100,
+      order: 'descending',
+    });
+
+    // Filter events by buyer address and extract dataset IDs
+    const purchasedDatasetIds = new Set<string>();
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.buyer?.toLowerCase() === buyerAddress.toLowerCase()) {
+        purchasedDatasetIds.add(parsedJson.dataset_id?.toString() || parsedJson.datasetId?.toString());
+      }
+    }
+
+    if (purchasedDatasetIds.size === 0) {
+      return [];
+    }
+
+    // Fetch all purchased datasets
+    const allDatasets = await getMarketplaceDatasets();
+    const purchasedDatasets = allDatasets.filter((dataset) =>
+      purchasedDatasetIds.has(dataset.id)
+    );
+
+    return purchasedDatasets.sort(
+      (a, b) => b.uploadDate.getTime() - a.uploadDate.getTime()
+    );
+  } catch (error) {
+    console.error('Failed to fetch purchased datasets:', error);
+    throw error;
+  }
 };

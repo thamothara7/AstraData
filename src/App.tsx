@@ -4,10 +4,11 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Header from './components/Header';
 import Marketplace from './components/Marketplace';
 import UploadDataset from './components/UploadDataset';
+import PurchasedDatasets from './components/PurchasedDatasets';
 import { Dataset } from './types';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'marketplace' | 'upload'>('marketplace');
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'upload' | 'purchased'>('marketplace');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,6 +47,8 @@ function App() {
           <main className="container mx-auto px-4 py-8">
             {activeTab === 'marketplace' ? (
               <Marketplace datasets={datasets} loading={loading} onRefresh={loadDatasets} />
+            ) : activeTab === 'purchased' ? (
+              <PurchasedDatasets />
             ) : (
               <UploadDataset onUploaded={handleDatasetUploaded} />
             )}

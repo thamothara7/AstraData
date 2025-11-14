@@ -1,12 +1,12 @@
 import { useWalletKit } from '@mysten/wallet-kit';
-import { Wallet, Upload, Database, Sun, Moon } from 'lucide-react';
+import { Wallet, Upload, Database, Sun, Moon, ShoppingBag } from 'lucide-react';
 import { formatAddress } from '../utils/format';
 import { useTheme } from '../contexts/ThemeContext';
 import { useState, useEffect, useRef } from 'react';
 
 interface HeaderProps {
-  activeTab: 'marketplace' | 'upload';
-  setActiveTab: (tab: 'marketplace' | 'upload') => void;
+  activeTab: 'marketplace' | 'upload' | 'purchased';
+  setActiveTab: (tab: 'marketplace' | 'upload' | 'purchased') => void;
 }
 
 export default function Header({ activeTab, setActiveTab }: HeaderProps) {
@@ -76,6 +76,17 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
             >
               <Database className="w-4 h-4" />
               <span className="font-medium">Marketplace</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('purchased')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                activeTab === 'purchased'
+                  ? 'bg-primary-600 text-white shadow-md'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span className="font-medium">Purchased</span>
             </button>
             <button
               onClick={() => setActiveTab('upload')}
