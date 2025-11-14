@@ -8,7 +8,7 @@ module astradata::marketplace {
     use sui::table::{Self, Table};
 
     /// Dataset struct stored on-chain
-    struct Dataset has store {
+    struct Dataset has store, drop {
         id: u64,  // Internal dataset ID
         name: vector<u8>,
         description: vector<u8>,
@@ -65,12 +65,19 @@ module astradata::marketplace {
         nft_id: ID,
     }
 
+    struct DatasetRemoved has copy, drop {
+        dataset_id: u64,
+        owner: address,
+        timestamp: u64,
+    }
+
     /// Errors
     const E_NOT_OWNER: u64 = 0;
     const E_DATASET_NOT_FOUND: u64 = 1;
     const E_INSUFFICIENT_FUNDS: u64 = 2;
     const E_INVALID_PRICE: u64 = 3;
     const E_INVALID_PAYMENT: u64 = 4;
+    const E_DATASET_HAS_PURCHASES: u64 = 5;
 
     /// Initialize marketplace
     fun init(ctx: &mut TxContext) {
@@ -210,6 +217,33 @@ module astradata::marketplace {
     /// Get dataset count
     public fun get_dataset_count(marketplace: &Marketplace): u64 {
         marketplace.dataset_count
+    }
+
+    /// Remove a dataset (only by owner)
+    public fun remove_dataset(
+        marketplace: &mut Marketplace,
+        dataset_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        assert!(table::contains(&marketplace.datasets, dataset_id), E_DATASET_NOT_FOUND);
+        
+        let dataset = table::borrow(&marketplace.datasets, dataset_id);
+        let owner = dataset.owner;
+        let sender = tx_context::sender(ctx);
+        
+        // Only the owner can remove their dataset
+        assert!(sender == owner, E_NOT_OWNER);
+        
+        // Remove the dataset from the table (dataset is dropped)
+        let _dataset = table::remove(&mut marketplace.datasets, dataset_id);
+        
+        let timestamp = tx_context::epoch_timestamp_ms(ctx);
+        
+        event::emit(DatasetRemoved {
+            dataset_id,
+            owner,
+            timestamp,
+        });
     }
 }
 

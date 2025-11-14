@@ -45,8 +45,12 @@ const REGISTER_DATASET_TARGET = () =>
   `${config.sui.marketplacePackageId}::marketplace::register_dataset` as `${string}::${string}::${string}`;
 const PURCHASE_DATASET_TARGET = () =>
   `${config.sui.marketplacePackageId}::marketplace::purchase_dataset` as `${string}::${string}::${string}`;
+const REMOVE_DATASET_TARGET = () =>
+  `${config.sui.marketplacePackageId}::marketplace::remove_dataset` as `${string}::${string}::${string}`;
 const DATASET_REGISTERED_EVENT = () =>
   `${config.sui.marketplacePackageId}::marketplace::DatasetRegistered`;
+const DATASET_REMOVED_EVENT = () =>
+  `${config.sui.marketplacePackageId}::marketplace::DatasetRemoved`;
 
 let cachedDatasetsTableId: string | null = null;
 
@@ -444,14 +448,73 @@ export const purchaseDataset = async (
 };
 
 /**
+ * Remove a dataset (only by owner)
+ */
+export const removeDataset = async (
+  dataset: Dataset,
+  walletSigner: WalletSigner | null | undefined,
+  walletAccount?: WalletAccount | null,
+  ownerAddress?: string
+): Promise<string> => {
+  ensureChainConfig();
+  const signer = ensureSigner(walletSigner);
+  const accountForSigning = ensureAccount(walletAccount, ownerAddress);
+
+  if (!/^\d+$/.test(dataset.id)) {
+    throw new Error('Invalid dataset identifier');
+  }
+
+  const datasetId = BigInt(dataset.id);
+
+  const tx = new TransactionBlock();
+  tx.setGasBudget(100_000_000);
+
+  tx.moveCall({
+    target: REMOVE_DATASET_TARGET(),
+    arguments: [
+      tx.object(config.sui.marketplaceObjectId),
+      tx.pure(datasetId),
+    ],
+  });
+
+  const response = await signer.signAndExecuteTransactionBlock({
+    transactionBlock: tx,
+    account: accountForSigning,
+    chain: walletChainId,
+    options: { showEffects: true, showEvents: true },
+  });
+
+  // Verify the removal event
+  const events = response.events || [];
+  const removedEvent = events.find(
+    (e: any) =>
+      e.type === DATASET_REMOVED_EVENT() ||
+      e.type?.includes('DatasetRemoved')
+  );
+
+  if (!removedEvent) {
+    const txDigest = response.digest;
+    console.warn(
+      `Dataset removal event not found in transaction result (tx ${txDigest}). Dataset may still be removed.`
+    );
+  }
+
+  return response.digest;
+};
+
+/**
  * Get datasets purchased by a specific address (via NFT ownership)
  */
 export const getPurchasedDatasets = async (buyerAddress: string): Promise<Dataset[]> => {
   ensureChainConfig();
 
   try {
+    console.log('Fetching purchased datasets for:', buyerAddress);
+    
     // Query owned objects of type DatasetNFT with pagination
     const nftType = `${config.sui.marketplacePackageId}::marketplace::DatasetNFT`;
+    console.log('NFT type:', nftType);
+    
     const purchasedDatasetIds = new Set<string>();
     let cursor: string | null | undefined;
     let hasMore = true;
@@ -470,6 +533,11 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
         limit: 50,
       });
 
+      console.log('Owned objects response:', {
+        count: ownedObjects.data?.length || 0,
+        hasNextPage: ownedObjects.hasNextPage,
+      });
+
       if (!ownedObjects.data || ownedObjects.data.length === 0) {
         break;
       }
@@ -477,8 +545,15 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
       // Extract dataset IDs from NFTs
       for (const obj of ownedObjects.data) {
         const content = obj.data?.content as any;
+        console.log('NFT object:', {
+          objectId: obj.data?.objectId,
+          contentType: content?.dataType,
+          fields: content?.fields,
+        });
+        
         if (content?.dataType === 'moveObject' && content.fields) {
           const datasetId = content.fields.dataset_id?.toString();
+          console.log('Found dataset ID in NFT:', datasetId);
           if (datasetId) {
             purchasedDatasetIds.add(datasetId);
           }
@@ -493,15 +568,24 @@ export const getPurchasedDatasets = async (buyerAddress: string): Promise<Datase
       }
     }
 
+    console.log('Total purchased dataset IDs found:', purchasedDatasetIds.size, Array.from(purchasedDatasetIds));
+
     if (purchasedDatasetIds.size === 0) {
+      console.log('No purchased datasets found');
       return [];
     }
 
     // Fetch all purchased datasets
     const allDatasets = await getMarketplaceDatasets();
-    const purchasedDatasets = allDatasets.filter((dataset) =>
-      purchasedDatasetIds.has(dataset.id)
-    );
+    console.log('All marketplace datasets:', allDatasets.length);
+    
+    const purchasedDatasets = allDatasets.filter((dataset) => {
+      const isPurchased = purchasedDatasetIds.has(dataset.id);
+      console.log(`Dataset ${dataset.id} (${dataset.name}): ${isPurchased ? 'PURCHASED' : 'not purchased'}`);
+      return isPurchased;
+    });
+
+    console.log('Final purchased datasets:', purchasedDatasets.length);
 
     return purchasedDatasets.sort(
       (a, b) => b.uploadDate.getTime() - a.uploadDate.getTime()

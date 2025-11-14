@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWalletKit } from '@mysten/wallet-kit';
-import { Search, Loader2, Database, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Loader2, Database, Download, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import DatasetCard from './DatasetCard';
 import { Dataset } from '../types';
 import { getPurchasedDatasets } from '../services/marketplace';
@@ -34,12 +34,22 @@ export default function PurchasedDatasets() {
   }, [isConnected, address]);
 
   const loadPurchasedDatasets = async () => {
+    if (!address) {
+      console.warn('No address available for loading purchased datasets');
+      setDatasets([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
+      console.log('Loading purchased datasets for address:', address);
       const data = await getPurchasedDatasets(address);
+      console.log('Loaded purchased datasets:', data.length, data);
       setDatasets(data);
     } catch (error) {
       console.error('Failed to load purchased datasets:', error);
+      setDatasets([]);
     } finally {
       setLoading(false);
     }
@@ -112,11 +122,21 @@ export default function PurchasedDatasets() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Purchases</h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Datasets you've purchased and have access to download
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Purchases</h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Datasets you've purchased and have access to download
+          </p>
+        </div>
+        <button
+          onClick={loadPurchasedDatasets}
+          disabled={loading}
+          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 dark:bg-primary-700 dark:hover:bg-primary-800 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
       </div>
 
       {/* Search */}
@@ -153,9 +173,9 @@ export default function PurchasedDatasets() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredDatasets.map((dataset) => (
-            <div key={dataset.id} className="relative">
+            <div key={dataset.id} className="bg-white dark:bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary-500/50 dark:hover:border-primary-500/50 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-gray-900/50 hover:shadow-md dark:hover:shadow-gray-900/70 relative">
               <DatasetCard dataset={dataset} onPurchase={() => {}} />
-              <div className="absolute top-4 right-4 z-20">
+              <div className="absolute bottom-4 right-4 z-20">
                 <button
                   onClick={() => handleDownload(dataset)}
                   disabled={downloading === dataset.id}
